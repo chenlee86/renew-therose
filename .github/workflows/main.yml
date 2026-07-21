@@ -3,7 +3,7 @@ name: Auto Renew therose
 on:
   workflow_dispatch:
   schedule:
-    - cron: '30 05 * * 6' # 根据到期时间在星期几 提前一天,比如星期三到期，cron写星期二即可
+    - cron: '0 */12 * * *' # 每12小时运行一次
 
 permissions:
   actions: write
@@ -27,25 +27,24 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y xvfb
-          pip install playwright requests 'requests[socks]'
-          python -m playwright install --with-deps chrome
-          
+          pip install seleniumbase requests
+          seleniumbase install chromedriver
+
       - name: ⚙ 设置代理 (sing-box)
         env:
           NODE_LINK: ${{ secrets.NODE_LINK }}
         run: |
           bash <(wget -qO- https://main.ssss.nyc.mn/setup_proxy.sh)
-          
+
       - name: 🚀 运行续期脚本
         env:
           EMAIL: ${{ secrets.EMAIL }}
           PASSWORD: ${{ secrets.PASSWORD }}
-          COOKIE_VALUE: ${{ secrets.COOKIE_VALUE }}
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
           IS_PROXY: ${{ env.IS_PROXY }}
           PROXY_SERVER: ${{ env.PROXY_SERVER }}
-        run: xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" python3 app.py
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" python3 therose.py
 
       - name: 🧽 清理进程和临时文件
         if: always()
