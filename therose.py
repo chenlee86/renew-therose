@@ -11,10 +11,27 @@ TG_CHAT_ID = os.environ.get("TG_CHAT_ID") or ""      # tg通知 chat_id id
 
 BASE_URL = "https://client.therose.cloud/login"
 
+# --- 代理配置（由工作流 shell 脚本写入 $GITHUB_ENV）---
+IS_PROXY = os.environ.get('IS_PROXY', 'false').lower() == 'true'
+PROXY_SERVER = os.environ.get('PROXY_SERVER') or "socks5://127.0.0.1:1080"
+REQUESTS_PROXIES = {"http": PROXY_SERVER, "https": PROXY_SERVER} if IS_PROXY else None
+
 # 检查必要变量
 if not EMAIL or not PASSWORD:
     print("❌ 请设置环境变量 EMAIL 和 PASSWORD")
     sys.exit(1)
+
+# 获取当前出口IP
+def get_current_ip(proxy_server=None):
+    proxies = {"http": proxy_server, "https": proxy_server} if (proxy_server and IS_PROXY) else None
+    try:
+        resp = requests.get("https://api.ip.sb/ip", proxies=proxies, timeout=15)
+        if resp.status_code == 200:
+            return resp.text.strip()
+        return "获取失败"
+    except Exception as e:
+        print(f"❌ 获取出口IP失败: {e}")
+        return "获取失败"
 
 # 点击续期按钮
 def click_extend_button(sb):
@@ -82,7 +99,7 @@ def send_tg(token, chat_id, message):
         return
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     try:
-        resp = requests.post(url, json={"chat_id": chat_id, "text": message}, timeout=10)
+        resp = requests.post(url, json={"chat_id": chat_id, "text": message}, timeout=10, proxies=REQUESTS_PROXIES)
         if resp.status_code == 200:
             print("📨 Telegram 通知已发送")
         else:
@@ -109,19 +126,39 @@ def login(sb, email, password):
         # sb.save_screenshot("turnstile_passed.png")
     except Exception as e:
         print(f"⚠️ uc_gui_click_captcha 执行异常: {e}")
-    print("🔑 点击登录按钮...")
-    sb.uc_click('button:contains("Sign in")')
-    sb.sleep(3)
-    for _ in range(30):
-        # 判断是否登录成功
-        current_url = sb.get_current_url()
-        page_title = sb.get_title() or ""
-        print(f"📄 当前 URL: {current_url} | Title: {page_title}")
-        if "panel" in current_url:
-            print("✅ 登录成功，已跳转到 Dashboard")
-            # sb.save_screenshot("login_success.png")
-            return True, current_url
-        time.sleep(1)
+    # Turnstile 显示"成功"后 token 需要一点时间写入隐藏字段，
+    # 点太快会导致表单被前端拦截（不报错，原地不动），所以这里先等一下
+    print("⏳ 等待验证 token 生效...")
+    sb.sleep(2)
+
+    for attempt in range(3):
+        print(f"🔑 点击登录按钮...(第 {attempt + 1} 次)")
+        try:
+            sb.uc_click('button:contains("Sign in")')
+        except Exception as e:
+            print(f"⚠️ 点击异常: {e}")
+
+        # 分批检测，不再一次性死等30秒
+        for _ in range(5):
+            current_url = sb.get_current_url()
+            if "panel" in current_url:
+                print("✅ 登录成功，已跳转到 Dashboard")
+                return True, current_url
+            time.sleep(1)
+
+        # 检查页面是否出现错误提示（账号密码错误等），有的话直接停止重试
+        try:
+            err_selectors = ['.alert-danger', 'div[role="alert"].alert-danger', '.text-danger']
+            for sel in err_selectors:
+                if sb.is_element_visible(sel):
+                    err_text = sb.get_text(sel)
+                    print(f"❌ 登录出现错误提示: {err_text}")
+                    sb.save_screenshot("login_faild.png")
+                    return False, sb.get_current_url()
+        except Exception:
+            pass
+
+        print("⚠️ 未跳转，可能是点击未生效或 token 还未就绪，准备重试...")
 
     print(f"❌ 登录失败，当前 URL: {sb.get_current_url()}")
     sb.save_screenshot("login_faild.png")
@@ -131,7 +168,20 @@ def login(sb, email, password):
 def main():
     print("🚀 启动浏览器")
 
-    with SB(uc=True, headless=False) as sb:
+    if IS_PROXY:
+        print(f"⚙️ 代理已启用: {PROXY_SERVER}")
+    else:
+        print("🌐 直连模式（未使用代理）")
+
+    # 获取当前出口IP
+    current_ip = get_current_ip(PROXY_SERVER)
+    print(f"🎯 当前出口IP: {current_ip}")
+
+    sb_kwargs = {"uc": True, "headless": False}
+    if IS_PROXY:
+        sb_kwargs["proxy"] = PROXY_SERVER
+
+    with SB(**sb_kwargs) as sb:
         success, url = login(sb, EMAIL, PASSWORD)
         
         if not success:
