@@ -3,7 +3,7 @@ name: Auto Renew therose
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 */12 * * *' # 每12小时运行一次
+    - cron: '0 10,22 * * *' # 北京时间每天 06:00 和 18:00 运行（UTC+8）
 
 permissions:
   actions: write
