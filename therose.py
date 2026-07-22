@@ -54,7 +54,10 @@ def click_extend_button(sb):
         print("✅ 通过 JavaScript 点击成功")
         return True, {}
     except Exception as e:
-        return False, {"error": str(e)}
+        err = str(e)
+        # 服务商只有到期前半小时才会显示 Extend 按钮，找不到按钮多半是还没到时间，而不是真的出错
+        not_time = "was not found" in err or "NoSuchElement" in err
+        return False, {"error": err, "not_time": not_time}
 
 # 检查续期是否成功
 def check_renewal_success(sb):
@@ -195,8 +198,12 @@ def main():
         # 点击 Extend 按钮
         ok, info = click_extend_button(sb)
         if not ok:
-            msg = f"❌ 点击 Extend 按钮失败: {info.get('error')}"
-            print(msg)
+            if info.get("not_time"):
+                msg = "⏳ 未到续期时间，Extend 按钮尚未出现（一般到期前半小时才会开放），本次跳过"
+                print(msg)
+            else:
+                msg = f"❌ 点击 Extend 按钮失败: {info.get('error')}"
+                print(msg)
             send_tg(TG_BOT_TOKEN, TG_CHAT_ID, msg)
             return
         
