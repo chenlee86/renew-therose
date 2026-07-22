@@ -11,6 +11,9 @@ TG_CHAT_ID = os.environ.get("TG_CHAT_ID") or ""      # tg通知 chat_id id
 
 BASE_URL = "https://client.therose.cloud/login"
 
+# logo 图片路径（和脚本放在同一目录下，文件名 logo.png，仓库里需要提交这个文件）
+LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")
+
 # --- 代理配置（由工作流 shell 脚本写入 $GITHUB_ENV）---
 IS_PROXY = os.environ.get('IS_PROXY', 'false').lower() == 'true'
 PROXY_SERVER = os.environ.get('PROXY_SERVER') or "socks5://127.0.0.1:1080"
@@ -100,6 +103,29 @@ def check_renewal_success(sb):
 def send_tg(token, chat_id, message):
     if not token or not chat_id:
         return
+    message = f"【TheRose Cloud】\n{message}"
+
+    # 如果本地有 logo.png，就用 sendPhoto 把图片和文字一起发出去，更好看
+    if os.path.exists(LOGO_PATH):
+        url = f"https://api.telegram.org/bot{token}/sendPhoto"
+        try:
+            with open(LOGO_PATH, "rb") as f:
+                resp = requests.post(
+                    url,
+                    data={"chat_id": chat_id, "caption": message},
+                    files={"photo": f},
+                    timeout=15,
+                    proxies=REQUESTS_PROXIES,
+                )
+            if resp.status_code == 200:
+                print("📨 Telegram 通知已发送（带 logo）")
+                return
+            else:
+                print(f"⚠️ 带 logo 发送失败，回退为纯文字: {resp.text}")
+        except Exception as e:
+            print(f"⚠️ 带 logo 发送异常，回退为纯文字: {e}")
+
+    # 没有 logo 或者发送图片失败时，退回普通文字通知
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     try:
         resp = requests.post(url, json={"chat_id": chat_id, "text": message}, timeout=10, proxies=REQUESTS_PROXIES)
