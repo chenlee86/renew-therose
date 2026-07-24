@@ -192,6 +192,27 @@ def reboot_server(sb, url):
         sb.wait_for_ready_state_complete()
         time.sleep(5) # 给面板一点时间加载状态和 WebSocket
         
+        # --- [新增] 处理控制面板可能需要独立登录的情况 ---
+        if sb.is_element_visible('input[type="password"]'):
+            print("🔒 检测到控制面板需要独立登录，正在尝试自动输入账号密码...")
+            try:
+                # 兼容翼龙面板不同的账号输入框属性
+                if sb.is_element_visible('input[name="user"]'):
+                    sb.type('input[name="user"]', EMAIL)
+                elif sb.is_element_visible('input[type="text"]'):
+                    sb.type('input[type="text"]', EMAIL)
+                
+                sb.type('input[type="password"]', PASSWORD)
+                sb.click('button[type="submit"]')
+                print("⏳ 已提交控制面板登录，等待页面跳转...")
+                time.sleep(5) # 等待登录完成并跳转到服务器详情页
+            except Exception as e:
+                print(f"⚠️ 自动登录控制面板失败: {e}")
+        
+        # 打印当前页面标题，方便排查到底停在了哪个页面
+        print(f"📄 当前所在页面: {sb.get_page_title()}")
+        # --- 新增结束 ---
+
         # 兼容更多 Pterodactyl 面板的重启按钮标识
         reboot_selectors = [
             'button[data-action="restart"]',     # 翼龙面板原生按钮属性 (最精准)
