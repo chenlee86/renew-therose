@@ -24,10 +24,17 @@ jobs:
         uses: actions/checkout@v4 # 修正为当前最新的 v4 版本
 
       - name: ⚙️ 设置 Python
-        uses: actions/setup-python@v5 # 修正为当前最新的 v5 版本
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip' # 开启 pip 缓存，加快依赖安装速度
+          # 删掉了 cache: 'pip' 这一行
+
+      - name: 🛠️ 安装系统依赖和 Python 依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          pip install seleniumbase requests
+          seleniumbase install chromedriver
 
       - name: 🛠️ 安装系统依赖和 Python 依赖
         run: |
