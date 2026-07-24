@@ -268,55 +268,39 @@ def reboot_server(sb, url):
             except:
                 continue
 
-        # 降级方案：利用坐标或 JS 强制点击右上角重启按钮
-        if not btn_clicked:
-            try:
-                # 尝试直接抓取带有 data-action 的按钮
-                btn = sb.find_element('button[data-action="restart"]', timeout=3)
-                sb.driver.execute_script("arguments[0].click();", btn)
-                btn_clicked = True
-                print("✅ 通过 JavaScript (data-action) 点击重启成功")
-            except:
-                # 终极降级：直接通过右上角按钮容器的常见特征用 JS 点击
-                try:
-                    sb.driver.execute_script("""
-                        const buttons = document.querySelectorAll('div.flex.items-center button, .card button');
-                        for (let btn of buttons) {
-                            if (btn.innerHTML.includes('fa-redo') || btn.innerHTML.includes('fa-sync') || btn.getAttribute('data-action') === 'restart') {
-                                btn.click();
+        # 降级方案：通过 JS 精准定位到中间的重启按钮
+                if not btn_clicked:
+                    try:
+                        btn_clicked = sb.driver.execute_script("""
+                            const buttons = document.querySelectorAll('div.flex.items-center button, .card button');
+                            // 遍历寻找带有 data-action 或 redo/sync 图标的按钮
+                            for (let btn of buttons) {
+                                if (btn.getAttribute('data-action') === 'restart' || btn.innerHTML.includes('fa-redo') || btn.innerHTML.includes('fa-sync')) {
+                                    btn.click();
+                                    return true;
+                                }
+                            }
+                            // 如果没匹配到图标，默认点击中间的按钮 (索引 1)
+                            if (buttons.length >= 2) {
+                                buttons[1].click();
                                 return true;
                             }
-                        }
-                        // 如果找不到特定图标，尝试点右上角操作区的最后一个按钮
-                        if (buttons.length > 0) {
-                            buttons[buttons.length - 1].click(2);
-                            return true;
-                        }
-                    """)
-                    btn_clicked = True
-                    print("✅ 通过通用 JS 脚本触发了重启按钮")
-                except Exception as ex:
-                    print(f"⚠️ JS 降级点击失败: {ex}")
-                
-        # 降级方案：JS 强制点击
-        if not btn_clicked:
-            try:
-                btn = sb.find_element('button[data-action="restart"]', timeout=2)
-                sb.driver.execute_script("arguments[0].click();", btn)
-                btn_clicked = True
-                print("✅ 通过 JavaScript (data-action) 点击重启成功")
-            except:
-                pass
-                
-        if btn_clicked:
-            print("⏳ 等待重启命令发送...")
-            time.sleep(3)
-            return True, "已成功发送重启指令"
-        else:
-            return False, "页面上未检测到重启按钮 (可能面板未完全加载)"
-            
-    except Exception as e:
-        return False, f"重启操作发生异常: {e}"
+                            return false;
+                        """)
+                        if btn_clicked:
+                            print("✅ 通过 JavaScript 成功点击了中间的重启按钮")
+                    except Exception as ex:
+                        print(f"⚠️ JS 降级点击失败: {ex}")
+                        
+                if btn_clicked:
+                    print("⏳ 等待重启命令发送...")
+                    time.sleep(3)
+                    return True, "已成功发送重启指令"
+                else:
+                    return False, "页面上未检测到重启按钮"
+                    
+            except Exception as e:
+                return False, f"重启操作发生异常: {e}"
 # 主流程
 def main():
     print("🚀 启动浏览器")
