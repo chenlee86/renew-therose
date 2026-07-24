@@ -295,14 +295,8 @@ def reboot_server(sb, url):
                         else:
                             return False, "页面上未检测到重启按钮"
                    except:
-                pass
-                
-        if btn_clicked:
-            print("⏳ 等待重启命令发送...")
-            time.sleep(3)
-            return True, "已成功发送重启指令"
-        else:
-            return False, "页面上未检测到重启按钮 (可能登录未成功)"
+                       pass
+            
             
     except Exception as e:
         return False, f"重启操作发生异常: {e}"
