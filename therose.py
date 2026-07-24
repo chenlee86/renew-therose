@@ -192,11 +192,13 @@ def reboot_server(sb, url):
         sb.wait_for_ready_state_complete()
         time.sleep(5) # 给面板一点时间加载状态
         
-        # --- 处理控制面板需要独立登录的情况 ---
+        # ==========================================
+        # 1. 处理控制面板需要独立登录的情况
+        # ==========================================
         if sb.is_element_visible('input[type="password"]'):
             print("🔒 检测到控制面板需要独立登录，正在尝试自动输入账号密码...")
             try:
-                # 输入账号
+                # 输入账号 (兼容不同的输入框 name 属性)
                 if sb.is_element_visible('input[name="user"]'):
                     sb.type('input[name="user"]', EMAIL)
                 elif sb.is_element_visible('input[type="text"]'):
@@ -206,58 +208,46 @@ def reboot_server(sb, url):
                 sb.type('input[type="password"]', PASSWORD)
                 time.sleep(1)
                 
-                # 处理 Turnstile 验证码
-                print("🛡️ 处理控制面板的 Turnstile 验证码...")
+                # 尝试处理人机验证 (如果存在)
                 try:
                     sb.uc_gui_click_captcha()
-                    print("✅ 控制面板 Turnstile 验证已点击")
-                except Exception as e:
-                    print(f"⚠️ 控制面板 Turnstile 处理异常 (可能已被免验证放行): {e}")
+                except Exception:
+                    pass # 如果没有验证码或点击报错，则直接跳过
                 
-                print("⏳ 等待验证 token 生效...")
                 time.sleep(3) 
                 
-                # 尝试点击登录按钮
+                # 点击登录按钮
                 try:
                     sb.click('button:contains("Login")')
-                except:
+                except Exception:
                     sb.click('button[type="submit"]')
                     
-                print("⏳ 已提交控制面板登录，等待页面跳转...")
-                time.sleep(8) # 登录后跳转可能较慢
+                time.sleep(8) # 等待登录完成并跳转
             except Exception as e:
                 print(f"⚠️ 自动登录控制面板发生错误: {e}")
         
-        # --- [核心修复] 检查是否被强制重定向到了主列表页 ---
+        # ==========================================
+        # 2. 检查是否被重定向到主页，如果是则强制返回详情页
+        # ==========================================
         current_url = sb.get_current_url()
-        print(f"📄 登录后当前所在页面: {current_url}")
-        
-        # 如果当前链接里没有 "/server/"，说明不在详情页，需要重新跳转
         if "/server/" not in current_url:
             print("🔀 检测到停留在主列表页，正在强制进入目标服务器控制台...")
             sb.open(url)
             sb.wait_for_ready_state_complete()
-            time.sleep(6) # 给详情页加载 WebSocket 和按钮的时间
-        # --- 新增结束 ---
+            time.sleep(6)
 
-        # 兼容更多 Pterodactyl/Reviactyl 面板的重启按钮标识
+        # ==========================================
+        # 3. 寻找并点击“重启”按钮
+        # ==========================================
         reboot_selectors = [
-            'button[data-action="restart"]',     # 翼龙面板原生按钮属性 (最精准)
-            'button[aria-label="Restart"]',      # 英文无障碍标签
-            'button[aria-label="重启"]',         # 中文无障碍标签
-            'button:contains("Restart")',        # 英文文本
-            'button:contains("Reboot")',         # 英文文本
-            'button i.fa-sync'                   # 同步/刷新图标
-            'button[data-action="restart"]',     # 原生 data-action 属性
-            'div.flex.items-center button:nth-child(3)', # 右上角操作区的第3个按钮
-            'div.flex.items-center button:nth-child(2)', # 右上角操作区的第2个按钮
-            'button i.fa-redo',                  # 带有 redo 循环图标
-            'button i.fa-sync',                  # 带有 sync 同步图标
-            'button:has(i.fa-redo)',
-            'button:has(i.fa-sync)'
+            'button[data-action="restart"]',
+            'button i.fa-redo',
+            'button i.fa-sync'
         ]
         
         btn_clicked = False
+        
+        # 方案 A: 通过常规 CSS 选择器点击
         for sel in reboot_selectors:
             try:
                 if sb.is_element_visible(sel):
@@ -265,40 +255,54 @@ def reboot_server(sb, url):
                     sb.uc_click(sel)
                     btn_clicked = True
                     break
-            except:
+            except Exception:
                 continue
-
-        # 降级方案：通过 JS 精准定位到中间的重启按钮
-                if not btn_clicked:
-                    try:
-                        btn_clicked = sb.driver.execute_script("""
-                            const buttons = document.querySelectorAll('div.flex.items-center button, .card button');
-                            // 遍历寻找带有 data-action 或 redo/sync 图标的按钮
-                            for (let btn of buttons) {
-                                if (btn.getAttribute('data-action') === 'restart' || btn.innerHTML.includes('fa-redo') || btn.innerHTML.includes('fa-sync')) {
-                                    btn.click();
-                                    return true;
-                                }
-                            }
-                            // 如果没匹配到图标，默认点击中间的按钮 (索引 1)
-                            if (buttons.length >= 2) {
-                                buttons[1].click();
-                                return true;
-                            }
-                            return false;
-                        """)
-                        if btn_clicked:
-                            print("✅ 通过 JavaScript 成功点击了中间的重启按钮")
-                            print("⏳ 等待重启命令发送...")
-                            time.sleep(3)
-                            return True, "已成功发送重启指令"
-                        else:
-                            return False, "页面上未检测到重启按钮"
-                   except:
-                       pass
-            
+                
+        # 方案 B: 降级方案（JS 直接定位右上角的中间按钮）
+        if not btn_clicked:
+            print("⚠️ 未能通过常规选择器找到按钮，正在使用 JavaScript 定位中间的重启按钮...")
+            try:
+                btn_clicked = sb.driver.execute_script("""
+                    const buttons = document.querySelectorAll('div.flex.items-center button, div.items-center button');
+                    
+                    // 1. 先尝试通过特征匹配
+                    for (let btn of buttons) {
+                        if (btn.getAttribute('data-action') === 'restart' || 
+                            btn.innerHTML.includes('fa-redo') || 
+                            btn.innerHTML.includes('fa-sync')) {
+                            btn.click();
+                            return true;
+                        }
+                    }
+                    
+                    // 2. 如果特征匹配失败，直接点击三个按钮中的中间那一个 (索引为 1)
+                    if (buttons.length >= 3) {
+                        buttons[1].click(); 
+                        return true;
+                    } else if (buttons.length >= 2) {
+                        // 如果只有两个按钮，通常是 启动 和 重启，重启在最后
+                        buttons[buttons.length - 1].click();
+                        return true;
+                    }
+                    return false;
+                """)
+                if btn_clicked:
+                    print("✅ 通过 JavaScript 成功点击了中间的重启按钮")
+            except Exception as ex:
+                print(f"⚠️ JS 降级点击失败: {ex}")
+                
+        # ==========================================
+        # 4. 验证结果
+        # ==========================================
+        if btn_clicked:
+            print("⏳ 等待重启命令发送...")
+            time.sleep(3)
+            return True, "已成功发送重启指令"
+        else:
+            return False, "页面上未检测到重启按钮"
             
     except Exception as e:
+        # 这个 except 捕获最外层 try 的异常，防止语法错误
         return False, f"重启操作发生异常: {e}"
 # 主流程
 def main():
