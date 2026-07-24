@@ -190,7 +190,7 @@ def reboot_server(sb, url):
     try:
         sb.open(url)
         sb.wait_for_ready_state_complete()
-        time.sleep(5) # 给面板一点时间加载状态和 WebSocket
+        time.sleep(5) # 给面板一点时间加载状态
         
         # --- 处理控制面板需要独立登录的情况 ---
         if sb.is_element_visible('input[type="password"]'):
@@ -206,7 +206,7 @@ def reboot_server(sb, url):
                 sb.type('input[type="password"]', PASSWORD)
                 time.sleep(1)
                 
-                # --- [核心修复] 处理 Turnstile 验证码 ---
+                # 处理 Turnstile 验证码
                 print("🛡️ 处理控制面板的 Turnstile 验证码...")
                 try:
                     sb.uc_gui_click_captcha()
@@ -214,23 +214,31 @@ def reboot_server(sb, url):
                 except Exception as e:
                     print(f"⚠️ 控制面板 Turnstile 处理异常 (可能已被免验证放行): {e}")
                 
-                # 给验证码 token 生成预留时间
                 print("⏳ 等待验证 token 生效...")
                 time.sleep(3) 
-                # --- 新增结束 ---
                 
-                # 尝试点击蓝色的 Login 按钮
+                # 尝试点击登录按钮
                 try:
                     sb.click('button:contains("Login")')
                 except:
                     sb.click('button[type="submit"]')
                     
                 print("⏳ 已提交控制面板登录，等待页面跳转...")
-                time.sleep(6) # 等待登录完成并加载服务器面板
+                time.sleep(8) # 登录后跳转可能较慢
             except Exception as e:
                 print(f"⚠️ 自动登录控制面板发生错误: {e}")
         
-        print(f"📄 当前所在页面: {sb.get_page_title()}")
+        # --- [核心修复] 检查是否被强制重定向到了主列表页 ---
+        current_url = sb.get_current_url()
+        print(f"📄 登录后当前所在页面: {current_url}")
+        
+        # 如果当前链接里没有 "/server/"，说明不在详情页，需要重新跳转
+        if "/server/" not in current_url:
+            print("🔀 检测到停留在主列表页，正在强制进入目标服务器控制台...")
+            sb.open(url)
+            sb.wait_for_ready_state_complete()
+            time.sleep(6) # 给详情页加载 WebSocket 和按钮的时间
+        # --- 新增结束 ---
 
         # 兼容更多 Pterodactyl/Reviactyl 面板的重启按钮标识
         reboot_selectors = [
@@ -239,7 +247,6 @@ def reboot_server(sb, url):
             'button[aria-label="重启"]',         # 中文无障碍标签
             'button:contains("Restart")',        # 英文文本
             'button:contains("Reboot")',         # 英文文本
-            'button:contains("重启")',           # 中文文本
             'button i.fa-sync'                   # 同步/刷新图标
         ]
         
@@ -269,11 +276,10 @@ def reboot_server(sb, url):
             time.sleep(3)
             return True, "已成功发送重启指令"
         else:
-            return False, "页面上未检测到重启按钮 (可能登录未成功)"
+            return False, "页面上未检测到重启按钮 (可能面板未完全加载)"
             
     except Exception as e:
         return False, f"重启操作发生异常: {e}"
-
 # 主流程
 def main():
     print("🚀 启动浏览器")
