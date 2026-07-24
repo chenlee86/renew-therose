@@ -266,7 +266,6 @@ def reboot_server(sb, url):
                     btn_clicked = True
                     break
                 if not btn_clicked:
-            try:
                 # 尝试直接抓取带有 data-action 的按钮
                 btn = sb.find_element('button[data-action="restart"]', timeout=3)
                 sb.driver.execute_script("arguments[0].click();", btn)
