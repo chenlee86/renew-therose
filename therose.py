@@ -296,8 +296,7 @@ def reboot_server(sb, url):
                             return False, "页面上未检测到重启按钮"
                     except Exception as ex:
                         print(f"⚠️ JS 降级点击失败: {ex}")
-                        return False, f"重启操作发生异常: {e}"          
-              
+                    
 # 主流程
 def main():
     print("🚀 启动浏览器")
