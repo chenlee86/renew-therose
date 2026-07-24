@@ -240,8 +240,14 @@ def reboot_server(sb, url):
             time.sleep(6) # 给详情页加载 WebSocket 和按钮的时间
         # --- 新增结束 ---
 
-        # 针对翼龙面板右上角控制按钮的精准定位（通常为：启动/停止/重启 或 停止/重启）
+        # 兼容更多 Pterodactyl/Reviactyl 面板的重启按钮标识
         reboot_selectors = [
+            'button[data-action="restart"]',     # 翼龙面板原生按钮属性 (最精准)
+            'button[aria-label="Restart"]',      # 英文无障碍标签
+            'button[aria-label="重启"]',         # 中文无障碍标签
+            'button:contains("Restart")',        # 英文文本
+            'button:contains("Reboot")',         # 英文文本
+            'button i.fa-sync'                   # 同步/刷新图标
             'button[data-action="restart"]',     # 原生 data-action 属性
             'div.flex.items-center button:nth-child(3)', # 右上角操作区的第3个按钮
             'div.flex.items-center button:nth-child(2)', # 右上角操作区的第2个按钮
@@ -254,17 +260,12 @@ def reboot_server(sb, url):
         btn_clicked = False
         for sel in reboot_selectors:
             try:
-                # 检查元素是否存在且可见
                 if sb.is_element_visible(sel):
                     print(f"✅ 找到重启按钮，选择器: {sel}")
                     sb.uc_click(sel)
                     btn_clicked = True
                     break
-            except:
-                continue
-                
-        # 降级方案：利用坐标或 JS 强制点击右上角重启按钮
-        if not btn_clicked:
+                if not btn_clicked:
             try:
                 # 尝试直接抓取带有 data-action 的按钮
                 btn = sb.find_element('button[data-action="restart"]', timeout=3)
@@ -292,6 +293,28 @@ def reboot_server(sb, url):
                     print("✅ 通过通用 JS 脚本触发了重启按钮")
                 except Exception as ex:
                     print(f"⚠️ JS 降级点击失败: {ex}")
+            except:
+                continue
+                
+        # 降级方案：JS 强制点击
+        if not btn_clicked:
+            try:
+                btn = sb.find_element('button[data-action="restart"]', timeout=2)
+                sb.driver.execute_script("arguments[0].click();", btn)
+                btn_clicked = True
+                print("✅ 通过 JavaScript (data-action) 点击重启成功")
+            except:
+                pass
+                
+        if btn_clicked:
+            print("⏳ 等待重启命令发送...")
+            time.sleep(3)
+            return True, "已成功发送重启指令"
+        else:
+            return False, "页面上未检测到重启按钮 (可能面板未完全加载)"
+            
+    except Exception as e:
+        return False, f"重启操作发生异常: {e}"
 # 主流程
 def main():
     print("🚀 启动浏览器")
