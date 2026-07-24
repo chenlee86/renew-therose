@@ -192,28 +192,47 @@ def reboot_server(sb, url):
         sb.wait_for_ready_state_complete()
         time.sleep(5) # 给面板一点时间加载状态和 WebSocket
         
-        # --- [新增] 处理控制面板可能需要独立登录的情况 ---
+        # --- 处理控制面板需要独立登录的情况 ---
         if sb.is_element_visible('input[type="password"]'):
             print("🔒 检测到控制面板需要独立登录，正在尝试自动输入账号密码...")
             try:
-                # 兼容翼龙面板不同的账号输入框属性
+                # 输入账号
                 if sb.is_element_visible('input[name="user"]'):
                     sb.type('input[name="user"]', EMAIL)
                 elif sb.is_element_visible('input[type="text"]'):
                     sb.type('input[type="text"]', EMAIL)
                 
+                # 输入密码
                 sb.type('input[type="password"]', PASSWORD)
-                sb.click('button[type="submit"]')
+                time.sleep(1)
+                
+                # --- [核心修复] 处理 Turnstile 验证码 ---
+                print("🛡️ 处理控制面板的 Turnstile 验证码...")
+                try:
+                    sb.uc_gui_click_captcha()
+                    print("✅ 控制面板 Turnstile 验证已点击")
+                except Exception as e:
+                    print(f"⚠️ 控制面板 Turnstile 处理异常 (可能已被免验证放行): {e}")
+                
+                # 给验证码 token 生成预留时间
+                print("⏳ 等待验证 token 生效...")
+                time.sleep(3) 
+                # --- 新增结束 ---
+                
+                # 尝试点击蓝色的 Login 按钮
+                try:
+                    sb.click('button:contains("Login")')
+                except:
+                    sb.click('button[type="submit"]')
+                    
                 print("⏳ 已提交控制面板登录，等待页面跳转...")
-                time.sleep(5) # 等待登录完成并跳转到服务器详情页
+                time.sleep(6) # 等待登录完成并加载服务器面板
             except Exception as e:
-                print(f"⚠️ 自动登录控制面板失败: {e}")
+                print(f"⚠️ 自动登录控制面板发生错误: {e}")
         
-        # 打印当前页面标题，方便排查到底停在了哪个页面
         print(f"📄 当前所在页面: {sb.get_page_title()}")
-        # --- 新增结束 ---
 
-        # 兼容更多 Pterodactyl 面板的重启按钮标识
+        # 兼容更多 Pterodactyl/Reviactyl 面板的重启按钮标识
         reboot_selectors = [
             'button[data-action="restart"]',     # 翼龙面板原生按钮属性 (最精准)
             'button[aria-label="Restart"]',      # 英文无障碍标签
@@ -250,7 +269,7 @@ def reboot_server(sb, url):
             time.sleep(3)
             return True, "已成功发送重启指令"
         else:
-            return False, "页面上未检测到重启按钮"
+            return False, "页面上未检测到重启按钮 (可能登录未成功)"
             
     except Exception as e:
         return False, f"重启操作发生异常: {e}"
