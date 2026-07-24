@@ -294,9 +294,18 @@ def reboot_server(sb, url):
                             return True, "已成功发送重启指令"
                         else:
                             return False, "页面上未检测到重启按钮"
-                    except Exception as ex:
-                        print(f"⚠️ JS 降级点击失败: {ex}")
-                    
+                   except:
+                pass
+                
+        if btn_clicked:
+            print("⏳ 等待重启命令发送...")
+            time.sleep(3)
+            return True, "已成功发送重启指令"
+        else:
+            return False, "页面上未检测到重启按钮 (可能登录未成功)"
+            
+    except Exception as e:
+        return False, f"重启操作发生异常: {e}"
 # 主流程
 def main():
     print("🚀 启动浏览器")
