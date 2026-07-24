@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import os,re,sys,time,requests
+import os, re, sys, time, requests
 from seleniumbase import SB
 
 # 环境变量 
@@ -10,6 +10,9 @@ TG_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN") or ""  # tg通知 bot token
 TG_CHAT_ID = os.environ.get("TG_CHAT_ID") or ""      # tg通知 chat_id id
 
 BASE_URL = "https://client.therose.cloud/login"
+
+# --- 新增: 需要重启的目标服务器 URL ---
+SERVER_URL = os.environ.get("SERVER_URL") or "https://panel.therose.cloud/server/1ce3ddfb"
 
 # logo 图片路径（和脚本放在同一目录下，文件名 logo.png，仓库里需要提交这个文件）
 LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")
@@ -99,13 +102,50 @@ def check_renewal_success(sb):
     
     return False, "未检测到续期成功提示"
 
+# --- 新增函数: 执行服务器重启 ---
+def restart_server(sb, url):
+    """访问目标服务器页面并执行重启指令"""
+    print(f"🔄 开始执行重启流程: 打开页面 {url}")
+    try:
+        sb.open(url)
+        sb.wait_for_ready_state_complete()
+        sb.sleep(3) # 等待页面元素加载（Pterodactyl等面板通常需要渲染时间）
+        
+        # 兼容常见的面板重启按钮
+        restart_selectors = [
+            'button:contains("Restart")', 
+            'button[data-action="restart"]', 
+            'button:contains("重启")'
+        ]
+        
+        clicked = False
+        for sel in restart_selectors:
+            if sb.is_element_visible(sel):
+                print(f"🎯 找到重启按钮: {sel}")
+                sb.uc_click(sel)
+                clicked = True
+                break
+                
+        if clicked:
+            print("✅ 成功点击重启按钮，等待命令执行生效...")
+            sb.sleep(5)
+            return True, "重启命令已成功下发"
+        else:
+            print("⚠️ 未找到任何重启按钮，可能面板已变更或账号无权限")
+            # 出错时不抛出异常退出，只返回失败，确保流程顺畅
+            return False, "页面上未检测到重启按钮"
+            
+    except Exception as e:
+        err_msg = f"访问或重启服务器时发生异常: {e}"
+        print(f"❌ {err_msg}")
+        return False, err_msg
+
 # 发送tg通知
 def send_tg(token, chat_id, message):
     if not token or not chat_id:
         return
     message = f"【TheRose Cloud】\n{message}"
 
-    # 如果本地有 logo.png，就用 sendPhoto 把图片和文字一起发出去，更好看
     if os.path.exists(LOGO_PATH):
         url = f"https://api.telegram.org/bot{token}/sendPhoto"
         try:
@@ -125,7 +165,6 @@ def send_tg(token, chat_id, message):
         except Exception as e:
             print(f"⚠️ 带 logo 发送异常，回退为纯文字: {e}")
 
-    # 没有 logo 或者发送图片失败时，退回普通文字通知
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     try:
         resp = requests.post(url, json={"chat_id": chat_id, "text": message}, timeout=10, proxies=REQUESTS_PROXIES)
@@ -152,11 +191,9 @@ def login(sb, email, password):
     try:
         sb.uc_gui_click_captcha()
         print("✅ Turnstile 验证已处理")
-        # sb.save_screenshot("turnstile_passed.png")
     except Exception as e:
         print(f"⚠️ uc_gui_click_captcha 执行异常: {e}")
-    # Turnstile 显示"成功"后 token 需要一点时间写入隐藏字段，
-    # 点太快会导致表单被前端拦截（不报错，原地不动），所以这里先等一下
+        
     print("⏳ 等待验证 token 生效...")
     sb.sleep(2)
 
@@ -167,7 +204,6 @@ def login(sb, email, password):
         except Exception as e:
             print(f"⚠️ 点击异常: {e}")
 
-        # 分批检测，不再一次性死等30秒
         for _ in range(5):
             current_url = sb.get_current_url()
             if "panel" in current_url:
@@ -175,7 +211,6 @@ def login(sb, email, password):
                 return True, current_url
             time.sleep(1)
 
-        # 检查页面是否出现错误提示（账号密码错误等），有的话直接停止重试
         try:
             err_selectors = ['.alert-danger', 'div[role="alert"].alert-danger', '.text-danger']
             for sel in err_selectors:
@@ -202,13 +237,15 @@ def main():
     else:
         print("🌐 直连模式（未使用代理）")
 
-    # 获取当前出口IP
     current_ip = get_current_ip(PROXY_SERVER)
     print(f"🎯 当前出口IP: {current_ip}")
 
     sb_kwargs = {"uc": True, "headless": False}
     if IS_PROXY:
         sb_kwargs["proxy"] = PROXY_SERVER
+
+    # 用以记录最终的通知内容
+    final_tg_messages = []
 
     with SB(**sb_kwargs) as sb:
         success, url = login(sb, EMAIL, PASSWORD)
@@ -220,53 +257,60 @@ def main():
             return
 
         print("📄 开始续期流程...")
-        
-        # 点击 Extend 按钮
         ok, info = click_extend_button(sb)
+        
         if not ok:
             if info.get("not_time"):
                 msg = "⏳ 未到续期时间，Extend 按钮尚未出现（一般到期前半小时才会开放），本次跳过"
                 print(msg)
+                final_tg_messages.append(msg)
             else:
                 msg = f"❌ 点击 Extend 按钮失败: {info.get('error')}"
                 print(msg)
-            send_tg(TG_BOT_TOKEN, TG_CHAT_ID, msg)
-            return
-        
-        time.sleep(1)
-        
-        # 点击 Order now 按钮
-        try:
-            button = sb.find_element('button:contains("Order now")', timeout=5)
-            if button:
-                print("🛒 点击 Order now 按钮...")
-                sb.uc_click('button:contains("Order now")')
-                print("✅ 已点击 Order now 按钮")
-            else:
-                msg = "❌ 未找到 Order now 按钮"
-                print(msg)
-                send_tg(TG_BOT_TOKEN, TG_CHAT_ID, msg)
-                return
-        except Exception as e:
-            msg = f"❌ 点击 Order now 失败: {e}"
-            print(msg)
-            send_tg(TG_BOT_TOKEN, TG_CHAT_ID, msg)
-            return
-        
-        # 检查续期是否成功
-        print("🔍 检查续期结果...")
-        renewal_success, renewal_msg = check_renewal_success(sb)
-        
-        if renewal_success:
-            msg = f"✅ 续期成功！{renewal_msg}"
-            print(msg)
-            sb.save_screenshot("renewal_success.png")
+                final_tg_messages.append(msg)
         else:
-            msg = f"❌ 续期可能失败: {renewal_msg}"
-            print(msg)
-            sb.save_screenshot("renewal_failed.png")
-        
-        send_tg(TG_BOT_TOKEN, TG_CHAT_ID, msg)
+            time.sleep(1)
+            try:
+                button = sb.find_element('button:contains("Order now")', timeout=5)
+                if button:
+                    print("🛒 点击 Order now 按钮...")
+                    sb.uc_click('button:contains("Order now")')
+                    print("✅ 已点击 Order now 按钮")
+                    
+                    print("🔍 检查续期结果...")
+                    renewal_success, renewal_msg = check_renewal_success(sb)
+                    if renewal_success:
+                        msg = f"✅ 续期成功！{renewal_msg}"
+                        sb.save_screenshot("renewal_success.png")
+                    else:
+                        msg = f"❌ 续期可能失败: {renewal_msg}"
+                        sb.save_screenshot("renewal_failed.png")
+                    
+                    print(msg)
+                    final_tg_messages.append(msg)
+                else:
+                    msg = "❌ 未找到 Order now 按钮"
+                    print(msg)
+                    final_tg_messages.append(msg)
+            except Exception as e:
+                msg = f"❌ 点击 Order now 失败: {e}"
+                print(msg)
+                final_tg_messages.append(msg)
+
+        # ==========================================
+        # 续期执行完毕（无论成功还是跳过），执行重启流程
+        # ==========================================
+        restart_success, restart_msg = restart_server(sb, SERVER_URL)
+        if restart_success:
+            final_tg_messages.append(f"🔄 {restart_msg}")
+        else:
+            final_tg_messages.append(f"⚠️ 服务器重启失败: {restart_msg}")
+            # 保存重启失败时的截图以便于调试排错
+            sb.save_screenshot("restart_failed.png")
+            
+        # 汇总发送最终通知
+        full_message = "\n".join(final_tg_messages)
+        send_tg(TG_BOT_TOKEN, TG_CHAT_ID, full_message)
 
     print("🏁 脚本执行完毕")
 
