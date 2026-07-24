@@ -42,43 +42,6 @@
       PASSWORD: ${{ secrets.PASSWORD }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-### 第三步：运行与查看日志
-脚本会根据你在 workflow.yml 中设置的 cron 时间表达式自动定时触发。
 
-你也可以在 GitHub 的 Actions 标签页中，选中对应的 Workflow 并点击 Run workflow 进行手动测试。
 
-排错利器：如果运行失败，可以在该次运行记录的页面最下方下载 Artifacts (如 run-screenshots 压缩包)，通过查看截图确认失败原因（如面板断网、验证码未通过等）。
 
-💻 本地调试运行指南
-如果你需要在本地电脑或自己的 VPS 服务器上修改代码并调试：
-
-1. 安装核心依赖
-确保系统已安装 Python 3.8 或以上版本，然后安装核心依赖库：
-
-Bash
-pip install seleniumbase
-2. 设置系统环境变量
-在执行代码前，必须先在终端中声明变量：
-
-Windows (CMD):
-
-DOS
-set EMAIL=你的邮箱
-set PASSWORD=你的密码
-Windows (PowerShell):
-
-PowerShell
-$env:EMAIL="你的邮箱"
-$env:PASSWORD="你的密码"
-Linux / macOS:
-
-Bash
-export EMAIL="你的邮箱"
-export PASSWORD="你的密码"
-3. 执行脚本
-Bash
-python therose.py
-⚠️ 注意事项与已知问题
-验证码拦截限制：如果目标站点近期遇到攻击或大幅提升了 Cloudflare 防护等级，SeleniumBase 偶尔可能会面临 Turnstile 无法自动点击通过的情况。建议遇到连续报错时，查看截图中盾牌的状态。
-
-语言兼容性：重启逻辑使用了底层属性（如 data-action="restart" 或特定的 font-awesome 图标类名）来寻找按钮，理论上无论服务器面板设置为中文还是英文环境均可完美兼容。
