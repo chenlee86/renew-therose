@@ -42,7 +42,7 @@
       PASSWORD: ${{ secrets.PASSWORD }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-第三步：运行与查看日志
+### 第三步：运行与查看日志
 脚本会根据你在 workflow.yml 中设置的 cron 时间表达式自动定时触发。
 
 你也可以在 GitHub 的 Actions 标签页中，选中对应的 Workflow 并点击 Run workflow 进行手动测试。
