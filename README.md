@@ -21,27 +21,4 @@
 | `TELEGRAM_BOT_TOKEN` | ❌ 否 | 你的 Telegram 机器人 Token（用于发送通知，形如 `123456:ABC-DEF...`）。如果不需要 TG 通知可不配置。 |
 | `TELEGRAM_CHAT_ID` | ❌ 否 | 接收 TG 通知消息的目标账户 ID 或群组 ID。 |
 
----
-
-## 🚀 部署指南 (GitHub Actions 推荐)
-
-推荐使用 GitHub Actions 实现完全免费的云端定时自动化运行。
-
-### 第一步：配置 GitHub Secrets
-1. 进入你存放该脚本代码的 GitHub 仓库主页。
-2. 依次点击顶部菜单栏的 **Settings** -> 左侧导航栏的 **Secrets and variables** -> **Actions**。
-3. 点击绿色的 **New repository secret** 按钮。
-4. 将上方表格中的【变量名】填入 `Name` 输入框，对应的值填入 `Secret` 输入框。
-5. 重复添加，直到所有必填环境变量配置完成。
-
-### 第二步：检查 Workflow 文件映射
-确保你的仓库的 `.github/workflows/xxxx.yml` 文件中，环境变量已正确传递给了 Python 脚本：
-```yaml
-    env:
-      EMAIL: ${{ secrets.EMAIL }}
-      PASSWORD: ${{ secrets.PASSWORD }}
-      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-
-
 
