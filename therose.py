@@ -265,7 +265,12 @@ def reboot_server(sb, url):
                     sb.uc_click(sel)
                     btn_clicked = True
                     break
-                    not btn_clicked:
+            except:
+                continue
+
+        # 降级方案：利用坐标或 JS 强制点击右上角重启按钮
+        if not btn_clicked:
+            try:
                 # 尝试直接抓取带有 data-action 的按钮
                 btn = sb.find_element('button[data-action="restart"]', timeout=3)
                 sb.driver.execute_script("arguments[0].click();", btn)
@@ -284,7 +289,7 @@ def reboot_server(sb, url):
                         }
                         // 如果找不到特定图标，尝试点右上角操作区的最后一个按钮
                         if (buttons.length > 0) {
-                            buttons[buttons.length - 1].click();
+                            buttons[buttons.length - 1].click(2);
                             return true;
                         }
                     """)
@@ -292,8 +297,6 @@ def reboot_server(sb, url):
                     print("✅ 通过通用 JS 脚本触发了重启按钮")
                 except Exception as ex:
                     print(f"⚠️ JS 降级点击失败: {ex}")
-            except:
-                continue
                 
         # 降级方案：JS 强制点击
         if not btn_clicked:
