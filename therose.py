@@ -319,6 +319,9 @@ def main():
     sb_kwargs = {"uc": True, "headless": False}
     if IS_PROXY:
         sb_kwargs["proxy"] = PROXY_SERVER
+    chrome_binary = os.environ.get("CHROME_BINARY")
+    if chrome_binary:
+        sb_kwargs["binary_location"] = chrome_binary
 
     with SB(**sb_kwargs) as sb:
         success, url = login(sb, EMAIL, PASSWORD)
