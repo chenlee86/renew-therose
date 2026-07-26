@@ -36,10 +36,64 @@ jobs:
           pip install seleniumbase requests
           seleniumbase install chromedriver
 
-      - name: 🌐 设置代理 (sing-box)
+      - name: 🌐 启动 WARP 代理 (优先, 官方 warp-cli)
+        id: warp
+        continue-on-error: true
+        run: |
+          echo "[WARP] 安装官方 cloudflare-warp..."
+          if ! curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | sudo gpg --yes --dearmor -o /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg; then
+            echo "[WARP] 下载公钥失败，回退机场"; echo "ok=false" >> $GITHUB_OUTPUT; exit 0
+          fi
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
+          sudo apt-get update -qq
+          if ! sudo apt-get install -y -qq cloudflare-warp; then
+            echo "[WARP] 安装失败，回退机场"; echo "ok=false" >> $GITHUB_OUTPUT; exit 0
+          fi
+
+          # 启动守护进程（GitHub runner 无 systemd，手动后台起）
+          sudo mkdir -p /var/lib/cloudflare-warp
+          sudo nohup warp-svc > warp-svc.log 2>&1 &
+          sleep 10
+
+          # 注册（应对 429 限流，多次重试；不同命令语法兼容）
+          for i in 1 2 3 4 5; do
+            ( warp-cli --accept-tos registration new || warp-cli --accept-tos register ) > reg.log 2>&1 || true
+            if ! grep -qiE "429|too many|error|failed" reg.log; then
+              echo "[WARP] 注册成功"; break
+            fi
+            echo "[WARP] 注册重试 $i (可能限流)..."; tail -2 reg.log || true; sleep 12
+          done
+
+          # 代理模式 + 连接
+          ( warp-cli --accept-tos mode proxy || warp-cli --accept-tos set-mode proxy ) || true
+          warp-cli --accept-tos connect || true
+          sleep 10
+          warp-cli --accept-tos status || true
+
+          # 以实际连通性为准
+          for i in 1 2 3 4 5 6; do
+            IP=$(curl -x socks5://127.0.0.1:40000 -s --max-time 15 https://api.ipify.org || true)
+            if [ -n "$IP" ]; then
+              echo "[WARP] WARP 出口 IP: $IP"
+              echo "ok=true" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            echo "[WARP] 连接测试 $i/6..."; sleep 5
+          done
+          echo "[WARP] WARP 连接失败，回退机场"
+          tail -20 warp-svc.log 2>/dev/null || true
+          echo "ok=false" >> $GITHUB_OUTPUT
+
+      - name: 🌐 设置代理 (WARP 就绪则跳过, 否则用 sing-box/NODE_LINK 兜底)
         env:
           NODE_LINK: ${{ secrets.NODE_LINK }}
         run: |
+          if [ "${{ steps.warp.outputs.ok }}" = "true" ]; then
+            echo "IS_PROXY=true" >> $GITHUB_ENV
+            echo "PROXY_SERVER=socks5://127.0.0.1:40000" >> $GITHUB_ENV
+            echo "[INFO] 使用 WARP 代理（Cloudflare 出口）"
+            exit 0
+          fi
           bash <(wget -qO- https://main.ssss.nyc.mn/setup_proxy.sh)
 
       - name: 🚀 运行续期与重启脚本
@@ -65,6 +119,7 @@ jobs:
         if: always()
         run: |
           pkill -f sing-box || true
+          pkill -f warp-svc || true
           pkill -f chromedriver || true
           pkill -f chrome || true
           pkill -f Xvfb || true
